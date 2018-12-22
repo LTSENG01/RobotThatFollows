@@ -1,16 +1,14 @@
-/*----------------------------------------------------------------------------*/
-/* Copyright (c) 2017-2018 FIRST. All Rights Reserved.                        */
-/* Open Source Software - may be modified and shared by FRC teams. The code   */
-/* must be accompanied by the FIRST BSD license file in the root directory of */
-/* the project.                                                               */
-/*----------------------------------------------------------------------------*/
-
 package ltseng01.robot;
 
+import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+
+import java.io.*;
+import java.util.ArrayList;
+import java.util.Arrays;
 
 public class Robot extends IterativeRobot {
 
@@ -29,6 +27,9 @@ public class Robot extends IterativeRobot {
 
     private static XboxController xboxController;
 
+    private static ArrayList<double[]> leftProfile;     // pos., vel., accel.
+    private static ArrayList<double[]> rightProfile;
+
     @Override
     public void robotInit() {
 
@@ -44,8 +45,8 @@ public class Robot extends IterativeRobot {
 
         differentialDrive = new DifferentialDrive(leftDrive, rightDrive);
 
-        leftEncoder = new Encoder(1, 2);
-        rightEncoder = new Encoder(3, 4, true);
+        leftEncoder = new Encoder(0, 1, true);
+        rightEncoder = new Encoder(3, 4);
 
         resetEncoders();
 
@@ -53,8 +54,8 @@ public class Robot extends IterativeRobot {
 
     @Override
     public void robotPeriodic() {
-        SmartDashboard.putNumber("Left Encoder Ticks", leftEncoder.get());
-        SmartDashboard.putNumber("Right Encoder Ticks", rightEncoder.get());
+        SmartDashboard.putNumber("Left Encoder Accum. Ticks", leftEncoder.get());
+        SmartDashboard.putNumber("Right Encoder Accum. Ticks", rightEncoder.get());
         SmartDashboard.putNumber("Left Encoder Velocity", leftEncoder.getRate());
         SmartDashboard.putNumber("Right Encoder Velocity", rightEncoder.getRate());
 
@@ -62,6 +63,30 @@ public class Robot extends IterativeRobot {
 
     @Override
     public void autonomousInit() {
+        leftProfile = readCSVMotionProfileFile("/home/lvuser/paths/path_left.csv");
+        rightProfile = readCSVMotionProfileFile("/home/lvuser/paths/path_right.csv");
+
+        System.out.println("Left Profile");
+        for (double[] segment : leftProfile) {
+            for (double point : segment) {
+                System.out.println(point);
+            }
+        }
+
+        System.out.println("Right Profile");
+        for (double[] segment : rightProfile) {
+            for (double point : segment) {
+                System.out.println(point);
+            }
+        }
+
+        leftFront.set(ControlMode.MotionProfile, 0.0);
+        leftBack.set(ControlMode.Follower, 0.0);
+        rightFront.set(ControlMode.MotionProfile, 0.0);
+        rightBack.set(ControlMode.Follower, 0.0);
+
+        leftFront.config_kF(0, 0.027, 20);
+        rightFront.config_kF(0, 0.027, 20);
 
 
     }
@@ -72,13 +97,31 @@ public class Robot extends IterativeRobot {
     }
 
     @Override
+    public void teleopInit() {
+        leftFront.set(ControlMode.PercentOutput, 0.0);
+        leftBack.set(ControlMode.PercentOutput, 0.0);
+        rightFront.set(ControlMode.PercentOutput, 0.0);
+        rightBack.set(ControlMode.PercentOutput, 0.0);
+
+    }
+
+    @Override
     public void teleopPeriodic() {
 
         // Manual Drive for Encoder Data
-        // TODO: Get Wheel Diameters --> Velocity calculation
+        // TODO: Get Wheel Diameters (4 in.) --> Velocity calculation
 
-        differentialDrive.arcadeDrive(-xboxController.getY(GenericHID.Hand.kLeft),
-                xboxController.getX(GenericHID.Hand.kRight));
+        // Arcade Drive
+        differentialDrive.arcadeDrive(0.5 * -xboxController.getY(GenericHID.Hand.kLeft),
+                0.5 * xboxController.getX(GenericHID.Hand.kRight));
+
+        // Tank Drive
+//        differentialDrive.tankDrive(0.5 * -xboxController.getY(GenericHID.Hand.kLeft),
+//                0.5 * -xboxController.getY(GenericHID.Hand.kRight));
+
+        if (xboxController.getXButtonPressed()) {
+            resetEncoders();
+        }
 
     }
 
@@ -90,6 +133,33 @@ public class Robot extends IterativeRobot {
     private static void resetEncoders() {
         leftEncoder.reset();
         rightEncoder.reset();
+    }
+
+    private static ArrayList<double[]> readCSVMotionProfileFile(String path) {
+
+        ArrayList<double[]> pathSegments = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(path))) {
+
+            String line;
+            String csvDelimiter = ",";
+
+            while ((line = br.readLine()) != null) {
+                String[] segment = line.split(csvDelimiter);
+
+                double[] convertedSegment = Arrays.stream(segment)
+                        .mapToDouble(Double::parseDouble)
+                        .toArray();
+
+                pathSegments.add(convertedSegment);
+            }
+
+        } catch (IOException ex) {
+            DriverStation.reportError("Unable to read motion profile file!", true);
+        }
+
+        return pathSegments;
+
     }
 
 }
