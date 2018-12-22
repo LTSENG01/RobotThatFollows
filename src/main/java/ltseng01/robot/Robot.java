@@ -1,10 +1,13 @@
 package ltseng01.robot;
 
+import com.ctre.phoenix.motion.TrajectoryPoint;
 import com.ctre.phoenix.motorcontrol.ControlMode;
+import com.ctre.phoenix.motorcontrol.FeedbackDevice;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
+import jaci.pathfinder.Pathfinder;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -22,8 +25,8 @@ public class Robot extends IterativeRobot {
 
     private static DifferentialDrive differentialDrive;
 
-    private static Encoder leftEncoder;
-    private static Encoder rightEncoder;
+//    private static Encoder leftEncoder;
+//    private static Encoder rightEncoder;
 
     private static XboxController xboxController;
 
@@ -40,13 +43,20 @@ public class Robot extends IterativeRobot {
         rightFront = new WPI_TalonSRX(3);
         rightBack = new WPI_TalonSRX(4);
 
+        rightFront.configPeakOutputForward(1, 0);
+        rightFront.configPeakOutputReverse(-1, 0);
+
         leftDrive = new SpeedControllerGroup(leftFront, leftBack);
         rightDrive = new SpeedControllerGroup(rightFront, rightBack);
 
         differentialDrive = new DifferentialDrive(leftDrive, rightDrive);
 
-        leftEncoder = new Encoder(0, 1, true);
-        rightEncoder = new Encoder(3, 4);
+        leftFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 10);
+        rightFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 10);
+        rightFront.setSensorPhase(true);
+
+//        leftEncoder = new Encoder(0, 1, true);
+//        rightEncoder = new Encoder(3, 4);
 
         resetEncoders();
 
@@ -54,10 +64,42 @@ public class Robot extends IterativeRobot {
 
     @Override
     public void robotPeriodic() {
-        SmartDashboard.putNumber("Left Encoder Accum. Ticks", leftEncoder.get());
-        SmartDashboard.putNumber("Right Encoder Accum. Ticks", rightEncoder.get());
-        SmartDashboard.putNumber("Left Encoder Velocity", leftEncoder.getRate());
-        SmartDashboard.putNumber("Right Encoder Velocity", rightEncoder.getRate());
+//        SmartDashboard.putNumber("Left Encoder Accum. Ticks", leftEncoder.get());
+//        SmartDashboard.putNumber("Right Encoder Accum. Ticks", rightEncoder.get());
+//        SmartDashboard.putNumber("Left Encoder Velocity", leftEncoder.getRate());
+//        SmartDashboard.putNumber("Right Encoder Velocity", rightEncoder.getRate());
+
+        double leftFrontPosition = leftFront.getSelectedSensorPosition(0);
+        double rightFrontPosition = rightFront.getSelectedSensorPosition(0);
+        double leftFrontVelocity = leftFront.getSelectedSensorVelocity(0);
+        double rightFrontVelocity = rightFront.getSelectedSensorVelocity(0);
+
+        SmartDashboard.putNumber("Left Encoder Accum. Ticks", leftFrontPosition);
+        SmartDashboard.putNumber("Right Encoder Accum. Ticks", rightFrontPosition);
+        SmartDashboard.putNumber("Left Encoder Velocity", leftFrontVelocity);
+        SmartDashboard.putNumber("Right Encoder Velocity", rightFrontVelocity);
+
+        SmartDashboard.putNumber("Left Encoder Distance, m", (leftFrontPosition / 8192) * (Math.PI * 0.1016));
+        SmartDashboard.putNumber("Right Encoder Distance, m", (rightFrontPosition / 8192) * (Math.PI * 0.1016));
+        SmartDashboard.putNumber("Left Encoder Velocity, mps", ((leftFrontVelocity * 10) / 8192) * (Math.PI * 0.1016));
+        SmartDashboard.putNumber("Right Encoder Velocity, mps", ((rightFrontVelocity * 10) / 8192) * (Math.PI * 0.1016));
+
+        /*
+
+        2048 resolution = 8192 ticks
+
+        8192 ticks = 1 rotation
+        1 rotation = 2 * pi * .1016m
+
+        (position / 8192) * (Math.PI * 0.1016)
+
+        -----
+
+        8192 ticks per 100milliseconds * 10 = ticks per second
+
+        (velocity / 10 / 8192) * (Math.PI * 0.1016)
+
+         */
 
     }
 
@@ -80,10 +122,9 @@ public class Robot extends IterativeRobot {
             }
         }
 
-        leftFront.set(ControlMode.MotionProfile, 0.0);
-        leftBack.set(ControlMode.Follower, 0.0);
-        rightFront.set(ControlMode.MotionProfile, 0.0);
-        rightBack.set(ControlMode.Follower, 0.0);
+        for (int i = 0; i < leftProfile.size(); i++) {
+
+        }
 
         leftFront.config_kF(0, 0.027, 20);
         rightFront.config_kF(0, 0.027, 20);
@@ -108,12 +149,9 @@ public class Robot extends IterativeRobot {
     @Override
     public void teleopPeriodic() {
 
-        // Manual Drive for Encoder Data
-        // TODO: Get Wheel Diameters (4 in.) --> Velocity calculation
-
         // Arcade Drive
-        differentialDrive.arcadeDrive(0.5 * -xboxController.getY(GenericHID.Hand.kLeft),
-                0.5 * xboxController.getX(GenericHID.Hand.kRight));
+        differentialDrive.arcadeDrive(-xboxController.getY(GenericHID.Hand.kLeft),
+                0.0 * xboxController.getX(GenericHID.Hand.kRight));
 
         // Tank Drive
 //        differentialDrive.tankDrive(0.5 * -xboxController.getY(GenericHID.Hand.kLeft),
@@ -131,8 +169,10 @@ public class Robot extends IterativeRobot {
     }
 
     private static void resetEncoders() {
-        leftEncoder.reset();
-        rightEncoder.reset();
+//        leftEncoder.reset();
+//        rightEncoder.reset();
+        leftFront.setSelectedSensorPosition(0, 0, 10);
+        rightFront.setSelectedSensorPosition(0, 0, 10);
     }
 
     private static ArrayList<double[]> readCSVMotionProfileFile(String path) {
