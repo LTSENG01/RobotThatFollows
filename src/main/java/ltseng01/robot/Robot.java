@@ -1,13 +1,14 @@
 package ltseng01.robot;
 
+import com.ctre.phoenix.motion.MotionProfileStatus;
 import com.ctre.phoenix.motion.TrajectoryPoint;
 import com.ctre.phoenix.motorcontrol.ControlMode;
 import com.ctre.phoenix.motorcontrol.FeedbackDevice;
+import com.ctre.phoenix.motorcontrol.can.TalonSRX;
 import com.ctre.phoenix.motorcontrol.can.WPI_TalonSRX;
 import edu.wpi.first.wpilibj.*;
 import edu.wpi.first.wpilibj.drive.DifferentialDrive;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
-import jaci.pathfinder.Pathfinder;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -33,6 +34,9 @@ public class Robot extends IterativeRobot {
     private static ArrayList<double[]> leftProfile;     // pos., vel., accel.
     private static ArrayList<double[]> rightProfile;
 
+    private static MotionProfileStatus leftMPStatus;
+    private static MotionProfileStatus rightMPStatus;
+
     @Override
     public void robotInit() {
 
@@ -50,15 +54,25 @@ public class Robot extends IterativeRobot {
         rightDrive = new SpeedControllerGroup(rightFront, rightBack);
 
         differentialDrive = new DifferentialDrive(leftDrive, rightDrive);
+        differentialDrive.setSafetyEnabled(false);
 
         leftFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 10);
         rightFront.configSelectedFeedbackSensor(FeedbackDevice.QuadEncoder, 0, 10);
-        rightFront.setSensorPhase(true);
+
+        rightFront.setInverted(true);
+        rightBack.setInverted(true);
+
+        rightFront.setSensorPhase(false);
+
+        rightDrive.setInverted(true);
 
 //        leftEncoder = new Encoder(0, 1, true);
 //        rightEncoder = new Encoder(3, 4);
 
         resetEncoders();
+
+        leftMPStatus = new MotionProfileStatus();
+        rightMPStatus = new MotionProfileStatus();
 
     }
 
@@ -69,20 +83,20 @@ public class Robot extends IterativeRobot {
 //        SmartDashboard.putNumber("Left Encoder Velocity", leftEncoder.getRate());
 //        SmartDashboard.putNumber("Right Encoder Velocity", rightEncoder.getRate());
 
-        double leftFrontPosition = leftFront.getSelectedSensorPosition(0);
-        double rightFrontPosition = rightFront.getSelectedSensorPosition(0);
-        double leftFrontVelocity = leftFront.getSelectedSensorVelocity(0);
-        double rightFrontVelocity = rightFront.getSelectedSensorVelocity(0);
+        int leftFrontPosition = leftFront.getSelectedSensorPosition(0);
+        int rightFrontPosition = rightFront.getSelectedSensorPosition(0);
+        int leftFrontVelocity = leftFront.getSelectedSensorVelocity(0);
+        int rightFrontVelocity = rightFront.getSelectedSensorVelocity(0);
 
         SmartDashboard.putNumber("Left Encoder Accum. Ticks", leftFrontPosition);
         SmartDashboard.putNumber("Right Encoder Accum. Ticks", rightFrontPosition);
         SmartDashboard.putNumber("Left Encoder Velocity", leftFrontVelocity);
         SmartDashboard.putNumber("Right Encoder Velocity", rightFrontVelocity);
 
-        SmartDashboard.putNumber("Left Encoder Distance, m", (leftFrontPosition / 8192) * (Math.PI * 0.1016));
-        SmartDashboard.putNumber("Right Encoder Distance, m", (rightFrontPosition / 8192) * (Math.PI * 0.1016));
-        SmartDashboard.putNumber("Left Encoder Velocity, mps", ((leftFrontVelocity * 10) / 8192) * (Math.PI * 0.1016));
-        SmartDashboard.putNumber("Right Encoder Velocity, mps", ((rightFrontVelocity * 10) / 8192) * (Math.PI * 0.1016));
+        SmartDashboard.putNumber("Left Encoder Distance, m", ticksToMeters(leftFrontPosition));
+        SmartDashboard.putNumber("Right Encoder Distance, m", ticksToMeters(rightFrontPosition));
+        SmartDashboard.putNumber("Left Encoder Velocity, mps", ticksToMeters(leftFrontVelocity * 10));  // vel * 10 to go from 100ms -> 1s
+        SmartDashboard.putNumber("Right Encoder Velocity, mps", ticksToMeters(rightFrontVelocity * 10));
 
         /*
 
@@ -105,35 +119,107 @@ public class Robot extends IterativeRobot {
 
     @Override
     public void autonomousInit() {
+
+        System.out.println("-- AUTONOMOUS INIT --");
+
+        leftBack.set(ControlMode.Follower, 1);      // Left Front
+        rightBack.set(ControlMode.Follower, 3);     // Right Front
+
+        leftFront.getMotionProfileStatus(leftMPStatus);
+        rightFront.getMotionProfileStatus(rightMPStatus);
+
+        leftFront.config_kF(0, 0.134, 20);
+        rightFront.config_kF(0, 0.134, 20);
+
         leftProfile = readCSVMotionProfileFile("/home/lvuser/paths/path_left.csv");
         rightProfile = readCSVMotionProfileFile("/home/lvuser/paths/path_right.csv");
 
-        System.out.println("Left Profile");
-        for (double[] segment : leftProfile) {
-            for (double point : segment) {
-                System.out.println(point);
-            }
+        System.out.println("Left Profile Count: " + leftProfile.size());
+        System.out.println("Right Profile Count: " + rightProfile.size());
+
+//        System.out.println("Left Profile");
+//        for (double[] segment : leftProfile) {
+//            for (double point : segment) {
+//                System.out.println(point);
+//            }
+//        }
+//
+//        System.out.println("Right Profile");
+//        for (double[] segment : rightProfile) {
+//            for (double point : segment) {
+//                System.out.println(point);
+//            }
+//        }
+
+        if (leftMPStatus.hasUnderrun)
+            leftFront.clearMotionProfileHasUnderrun(0);
+
+        if (rightMPStatus.hasUnderrun)
+            rightFront.clearMotionProfileHasUnderrun(0);
+
+        leftFront.clearMotionProfileTrajectories();
+        leftFront.configMotionProfileTrajectoryPeriod(0, 10);
+        rightFront.clearMotionProfileTrajectories();
+        rightFront.configMotionProfileTrajectoryPeriod(0, 10);
+
+        loadTrajectoryToTalon(leftFront, leftProfile);
+        loadTrajectoryToTalon(rightFront, rightProfile);
+
+        System.out.println("-- AUTONOMOUS INIT END --");
+    }
+
+    private void loadTrajectoryToTalon(TalonSRX talonSRX, ArrayList<double[]> profile) {
+        TrajectoryPoint point = new TrajectoryPoint();
+
+        for (int i = 0; i < profile.size(); i++) {
+            point.position = metersToTicks(profile.get(i)[0]);     // meters -> rotations -> ticks
+            point.velocity = metersToTicks(profile.get(i)[1]) / 10.0;     // meters/second -> ticks/sec -> ticks/100ms
+            point.timeDur = TrajectoryPoint.TrajectoryDuration.Trajectory_Duration_50ms;
+            point.profileSlotSelect0 = 0;
+
+            point.zeroPos = i == 0;
+            point.isLastPoint = (i + 1) == profile.size();
+
+            talonSRX.pushMotionProfileTrajectory(point);
+
         }
 
-        System.out.println("Right Profile");
-        for (double[] segment : rightProfile) {
-            for (double point : segment) {
-                System.out.println(point);
-            }
-        }
+        System.out.println("Loaded Trajectory");
 
-        for (int i = 0; i < leftProfile.size(); i++) {
+    }
 
-        }
+    private int metersToTicks(double meters) {
+        return (int) ((meters / (Math.PI * 0.1016)) * (8192.0));
+    }
 
-        leftFront.config_kF(0, 0.027, 20);
-        rightFront.config_kF(0, 0.027, 20);
-
-
+    private double ticksToMeters(int ticks) {
+        return (ticks / 8192.0) * (Math.PI * 0.1016);       // assuming 8192 ticks per rotation, 0.1016 = diameter in meters
     }
 
     @Override
     public void autonomousPeriodic() {
+
+        leftFront.getMotionProfileStatus(leftMPStatus);
+        rightFront.getMotionProfileStatus(rightMPStatus);
+
+        leftFront.processMotionProfileBuffer();
+        rightFront.processMotionProfileBuffer();
+
+        if (leftMPStatus.btmBufferCnt > 50 || leftMPStatus.topBufferCnt == 0)
+            leftFront.set(ControlMode.MotionProfile, 1);
+
+        if (rightMPStatus.btmBufferCnt > 50 || rightMPStatus.topBufferCnt == 0)
+            rightFront.set(ControlMode.MotionProfile, 1);
+
+        if (leftMPStatus.isLast) {
+            System.out.println("Done with Left Profile");
+            leftFront.set(ControlMode.MotionProfile, 0);
+        }
+
+        if (rightMPStatus.isLast) {
+            System.out.println("Done with Right Profile");
+            rightFront.set(ControlMode.MotionProfile, 0);
+        }
 
     }
 
@@ -151,7 +237,7 @@ public class Robot extends IterativeRobot {
 
         // Arcade Drive
         differentialDrive.arcadeDrive(-xboxController.getY(GenericHID.Hand.kLeft),
-                0.0 * xboxController.getX(GenericHID.Hand.kRight));
+                0.5 * xboxController.getX(GenericHID.Hand.kRight));
 
         // Tank Drive
 //        differentialDrive.tankDrive(0.5 * -xboxController.getY(GenericHID.Hand.kLeft),
