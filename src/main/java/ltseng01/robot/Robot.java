@@ -22,6 +22,10 @@ import java.util.Arrays;
  */
 public class Robot extends IterativeRobot {
 
+    // Constants
+    private static final double kP = 0.134;     // The feedforward gain for the Talon SRX
+    private static final double WHEEL_M = 0.1016;       // The diameter of the wheels in meters (4")
+
     private static WPI_TalonSRX leftFront;
     private static WPI_TalonSRX leftBack;
     private static WPI_TalonSRX rightFront;
@@ -126,8 +130,8 @@ public class Robot extends IterativeRobot {
         leftFront.getMotionProfileStatus(leftMPStatus);
         rightFront.getMotionProfileStatus(rightMPStatus);
 
-        leftFront.config_kF(0, 0.134, 20);
-        rightFront.config_kF(0, 0.134, 20);
+        leftFront.config_kF(0, kP, 20);
+        rightFront.config_kF(0, kP, 20);
 
         leftProfile = readCSVMotionProfileFile("/home/lvuser/paths/path_left.csv");
         rightProfile = readCSVMotionProfileFile("/home/lvuser/paths/path_right.csv");
@@ -200,7 +204,7 @@ public class Robot extends IterativeRobot {
      * @return the number of quadrature encoder ticks
      */
     private int metersToTicks(double meters) {
-        return (int) ((meters / (Math.PI * 0.1016)) * (8192.0));
+        return (int) ((meters / (Math.PI * WHEEL_M)) * (8192.0));
     }
 
     /**
@@ -210,7 +214,7 @@ public class Robot extends IterativeRobot {
      * @return the number of meters
      */
     private double ticksToMeters(int ticks) {
-        return (ticks / 8192.0) * (Math.PI * 0.1016);       // assuming 8192 ticks per rotation, 0.1016 = diameter in meters
+        return (ticks / 8192.0) * (Math.PI * WHEEL_M);       // assuming 8192 ticks per rotation, 0.1016 = diameter in meters
     }
 
     @Override
@@ -252,7 +256,7 @@ public class Robot extends IterativeRobot {
     @Override
     public void teleopPeriodic() {
 
-        // Arcade Drive
+        // Arcade Drive (less speed for manual rotation)
         differentialDrive.arcadeDrive(-xboxController.getY(GenericHID.Hand.kLeft),
                 0.5 * xboxController.getX(GenericHID.Hand.kRight));
 
